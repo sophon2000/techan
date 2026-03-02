@@ -1,78 +1,170 @@
 package techan
 
-import "github.com/sdcoffey/big"
+import (
+	"time"
 
-// Position is a pair of two Order objects
+	"github.com/sdcoffey/big"
+)
+
+// Position 表示一笔持仓，支持多笔入场（加仓）和多笔出场（分批止盈）
 type Position struct {
-	orders [2]*Order
+	entryOrders []*Order
+	exitOrders  []*Order
 }
 
-// NewPosition returns a new Position with the passed-in order as the open order
+// NewPosition 用给定的开仓单创建新持仓
 func NewPosition(openOrder Order) (t *Position) {
 	t = new(Position)
-	t.orders[0] = &openOrder
-
+	t.entryOrders = make([]*Order, 0)
+	t.exitOrders = make([]*Order, 0)
+	o := openOrder
+	t.entryOrders = append(t.entryOrders, &o)
 	return t
 }
 
-// Enter sets the open order to the order passed in
+// Enter 开仓或加仓：追加一笔入场单
 func (p *Position) Enter(order Order) {
-	p.orders[0] = &order
+	if p.entryOrders == nil {
+		p.entryOrders = make([]*Order, 0)
+		p.exitOrders = make([]*Order, 0)
+	}
+	o := order
+	p.entryOrders = append(p.entryOrders, &o)
 }
 
-// Exit sets the exit order to the order passed in
+// Exit 平仓或分批止盈：追加一笔出场单
 func (p *Position) Exit(order Order) {
-	p.orders[1] = &order
+	if p.exitOrders == nil {
+		p.exitOrders = make([]*Order, 0)
+	}
+	o := order
+	p.exitOrders = append(p.exitOrders, &o)
 }
 
-// IsLong returns true if the entrance order is a buy order
+// EntryOrders 返回所有入场单（用于加仓场景）
+func (p *Position) EntryOrders() []*Order {
+	if p.entryOrders == nil {
+		return nil
+	}
+	return p.entryOrders
+}
+
+// ExitOrders 返回所有出场单（用于分批止盈场景）
+func (p *Position) ExitOrders() []*Order {
+	if p.exitOrders == nil {
+		return nil
+	}
+	return p.exitOrders
+}
+
+// TotalEntryAmount 返回总入场数量
+func (p *Position) TotalEntryAmount() big.Decimal {
+	var sum big.Decimal = big.ZERO
+	for _, o := range p.entryOrders {
+		if o != nil {
+			sum = sum.Add(o.Amount)
+		}
+	}
+	return sum
+}
+
+// TotalExitAmount 返回已出场总数量
+func (p *Position) TotalExitAmount() big.Decimal {
+	var sum big.Decimal = big.ZERO
+	for _, o := range p.exitOrders {
+		if o != nil {
+			sum = sum.Add(o.Amount)
+		}
+	}
+	return sum
+}
+
+// RemainingAmount 返回当前剩余持仓数量（未平仓部分）
+func (p *Position) RemainingAmount() big.Decimal {
+	return p.TotalEntryAmount().Sub(p.TotalExitAmount())
+}
+
+// IsLong 是否为多头
 func (p *Position) IsLong() bool {
 	return p.EntranceOrder() != nil && p.EntranceOrder().Side == BUY
 }
 
-// IsShort returns true if the entrance order is a sell order
+// IsShort 是否为空头
 func (p *Position) IsShort() bool {
 	return p.EntranceOrder() != nil && p.EntranceOrder().Side == SELL
 }
 
-// IsOpen returns true if there is an entrance order but no exit order
+// IsOpen 是否仍有持仓（有入场且未完全平仓）
 func (p *Position) IsOpen() bool {
-	return p.EntranceOrder() != nil && p.ExitOrder() == nil
+	if p.entryOrders == nil || len(p.entryOrders) == 0 {
+		return false
+	}
+	return p.TotalExitAmount().LT(p.TotalEntryAmount())
 }
 
-// IsClosed returns true of there are both entrance and exit orders
+// IsClosed 是否已完全平仓
 func (p *Position) IsClosed() bool {
-	return p.EntranceOrder() != nil && p.ExitOrder() != nil
+	if p.entryOrders == nil || len(p.entryOrders) == 0 {
+		return false
+	}
+	return p.TotalExitAmount().GTE(p.TotalEntryAmount())
 }
 
-// IsNew returns true if there is neither an entrance or exit order
+// IsNew 是否为空仓位（无任何入场）
 func (p *Position) IsNew() bool {
-	return p.EntranceOrder() == nil && p.ExitOrder() == nil
+	return p.entryOrders == nil || len(p.entryOrders) == 0
 }
 
-// EntranceOrder returns the entrance order of this position
+// EntranceOrder 返回第一笔入场单（兼容旧用法）
 func (p *Position) EntranceOrder() *Order {
-	return p.orders[0]
+	if p.entryOrders == nil || len(p.entryOrders) == 0 {
+		return nil
+	}
+	return p.entryOrders[0]
 }
 
-// ExitOrder returns the exit order of this position
+// ExitOrder 返回最后一笔出场单（兼容旧用法）
 func (p *Position) ExitOrder() *Order {
-	return p.orders[1]
+	if p.exitOrders == nil || len(p.exitOrders) == 0 {
+		return nil
+	}
+	return p.exitOrders[len(p.exitOrders)-1]
 }
 
-// CostBasis returns the price to enter this order
+// CostBasis 返回持仓成本（所有入场单的金额之和）
 func (p *Position) CostBasis() big.Decimal {
-	if p.EntranceOrder() != nil {
-		return p.EntranceOrder().Amount.Mul(p.EntranceOrder().Price)
+	var sum big.Decimal = big.ZERO
+	for _, o := range p.entryOrders {
+		if o != nil {
+			sum = sum.Add(o.Amount.Mul(o.Price))
+		}
 	}
-	return big.ZERO
+	return sum
 }
 
-// ExitValue returns the value accrued by closing the position
+// ExitValue 返回已出场部分对应的市值（所有出场单的金额之和）
 func (p *Position) ExitValue() big.Decimal {
-	if p.IsClosed() {
-		return p.ExitOrder().Amount.Mul(p.ExitOrder().Price)
+	var sum big.Decimal = big.ZERO
+	for _, o := range p.exitOrders {
+		if o != nil {
+			sum = sum.Add(o.Amount.Mul(o.Price))
+		}
 	}
+	return sum
+}
 
-	return big.ZERO
+// LastActivityTime 返回当前持仓最后一次操作时间（用于订单时序校验）
+func (p *Position) LastActivityTime() time.Time {
+	var t time.Time
+	for _, o := range p.entryOrders {
+		if o != nil && o.ExecutionTime.After(t) {
+			t = o.ExecutionTime
+		}
+	}
+	for _, o := range p.exitOrders {
+		if o != nil && o.ExecutionTime.After(t) {
+			t = o.ExecutionTime
+		}
+	}
+	return t
 }

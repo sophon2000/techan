@@ -92,10 +92,21 @@ type PeriodProfitAnalysis struct {
 
 // Analyze returns the average profit for the trading record based on the given duration
 func (ppa PeriodProfitAnalysis) Analyze(record *TradingRecord) float64 {
+	if len(record.Trades) == 0 {
+		return 0
+	}
 	var tp TotalProfitAnalysis
 	totalProfit := tp.Analyze(record)
 
-	periods := record.Trades[len(record.Trades)-1].ExitOrder().ExecutionTime.Sub(record.Trades[0].EntranceOrder().ExecutionTime) / ppa.Period
+	last := record.Trades[len(record.Trades)-1]
+	first := record.Trades[0]
+	if last.ExitOrder() == nil || first.EntranceOrder() == nil {
+		return 0
+	}
+	periods := last.ExitOrder().ExecutionTime.Sub(first.EntranceOrder().ExecutionTime) / ppa.Period
+	if periods <= 0 {
+		return totalProfit
+	}
 	return totalProfit / float64(periods)
 }
 
@@ -106,10 +117,12 @@ type ProfitableTradesAnalysis struct{}
 func (pta ProfitableTradesAnalysis) Analyze(record *TradingRecord) float64 {
 	var profitableTrades int
 	for _, trade := range record.Trades {
-		costBasis := trade.EntranceOrder().Amount.Mul(trade.EntranceOrder().Price)
-		sellPrice := trade.ExitOrder().Amount.Mul(trade.ExitOrder().Price)
-
-		if sellPrice.GT(costBasis) {
+		if !trade.IsClosed() {
+			continue
+		}
+		costBasis := trade.CostBasis()
+		exitValue := trade.ExitValue()
+		if exitValue.GT(costBasis) {
 			profitableTrades++
 		}
 	}

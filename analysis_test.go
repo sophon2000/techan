@@ -21,58 +21,21 @@ func TestTotalProfitAnalysis(t *testing.T) {
 		record := NewTradingRecord()
 		tpa := TotalProfitAnalysis{}
 
+		// 两笔完整交易：多头 1@1 平 1@2 盈利 1；空头 1@2 平 1@1 盈利 1；总盈利 2
 		orders := []Order{
-			{
-				Side:          BUY,
-				Amount:        big.NewDecimal(1),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
-			{
-				Side:          SELL,
-				Amount:        big.NewDecimal(2),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
-			{
-				Side:          SELL,
-				Amount:        big.NewDecimal(1),
-				Price:         big.NewDecimal(2),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
-			{
-				Side:          BUY,
-				Amount:        big.NewDecimal(1),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
+			{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
+			{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(2), Security: example, ExecutionTime: time.Now()},
+			{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(2), Security: example, ExecutionTime: time.Now()},
+			{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
 		}
-
 		for _, order := range orders {
 			record.Operate(order)
 		}
-
 		assert.EqualValues(t, 2.0, tpa.Analyze(record))
 
-		record.Operate(Order{
-			Side:          BUY,
-			Amount:        big.ONE,
-			Price:         big.ONE,
-			Security:      example,
-			ExecutionTime: time.Now(),
-		})
-
-		record.Operate(Order{
-			Side:          SELL,
-			Amount:        big.NewFromString("0.5"),
-			Price:         big.ONE,
-			Security:      example,
-			ExecutionTime: time.Now(),
-		})
+		// 再开多 1@1，平 1@0.5，亏损 0.5；总盈利 1.5
+		record.Operate(Order{Side: BUY, Amount: big.ONE, Price: big.ONE, Security: example, ExecutionTime: time.Now()})
+		record.Operate(Order{Side: SELL, Amount: big.ONE, Price: big.NewFromString("0.5"), Security: example, ExecutionTime: time.Now()})
 
 		assert.EqualValues(t, 1.5, tpa.Analyze(record))
 	})
@@ -89,104 +52,47 @@ func TestPercentGainAnalysis(t *testing.T) {
 
 	t.Run("Simple gain", func(t *testing.T) {
 		record := NewTradingRecord()
-
 		pga := PercentGainAnalysis{}
-
+		// 一笔：买 1@1 卖 1@2，收益率 100%
 		orders := []Order{
-			{
-				Side:          BUY,
-				Amount:        big.NewDecimal(1),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
-			{
-				Side:          SELL,
-				Amount:        big.NewDecimal(2),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
+			{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
+			{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(2), Security: example, ExecutionTime: time.Now()},
 		}
-
 		for _, order := range orders {
 			record.Operate(order)
 		}
-
 		gain := pga.Analyze(record)
 		assert.EqualValues(t, 1, gain)
 	})
 
 	t.Run("Simple loss", func(t *testing.T) {
 		record := NewTradingRecord()
-
 		pga := PercentGainAnalysis{}
-
+		// 一笔：买 2@1 卖 2@0.5，收益率 -50%
 		orders := []Order{
-			{
-				Side:          BUY,
-				Amount:        big.NewDecimal(2),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
-			{
-				Side:          SELL,
-				Amount:        big.NewDecimal(1),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
+			{Side: BUY, Amount: big.NewDecimal(2), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
+			{Side: SELL, Amount: big.NewDecimal(2), Price: big.NewDecimal(0.5), Security: example, ExecutionTime: time.Now()},
 		}
-
 		for _, order := range orders {
 			record.Operate(order)
 		}
-
 		gain := pga.Analyze(record)
 		assert.EqualValues(t, -.5, gain)
 	})
 
 	t.Run("Small loss and gain", func(t *testing.T) {
 		record := NewTradingRecord()
-
 		pga := PercentGainAnalysis{}
-
+		// 两笔：买 2@1 卖 2@0.5（亏）；卖 1@1 买 1@1.25（盈）。首笔成本 2，末笔出场 1.25，收益率 1.25/2-1 = -0.375
 		orders := []Order{
-			{
-				Side:          BUY,
-				Amount:        big.NewDecimal(2),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
-			{
-				Side:          SELL,
-				Amount:        big.NewDecimal(1),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
-			{
-				Side:          BUY,
-				Amount:        big.NewDecimal(1),
-				Price:         big.NewDecimal(1),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
-			{
-				Side:          SELL,
-				Amount:        big.NewDecimal(1),
-				Price:         big.NewDecimal(1.25),
-				Security:      example,
-				ExecutionTime: time.Now(),
-			},
+			{Side: BUY, Amount: big.NewDecimal(2), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
+			{Side: SELL, Amount: big.NewDecimal(2), Price: big.NewDecimal(0.5), Security: example, ExecutionTime: time.Now()},
+			{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
+			{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1.25), Security: example, ExecutionTime: time.Now()},
 		}
-
 		for _, order := range orders {
 			record.Operate(order)
 		}
-
 		gain := pga.Analyze(record)
 		assert.EqualValues(t, -.375, gain)
 	})
@@ -284,135 +190,51 @@ func TestLogTradesAnalysis(t *testing.T) {
 
 func TestPeriodProfitAnalysis(t *testing.T) {
 	record := NewTradingRecord()
-
 	now := time.Now().Add(-time.Minute * 5)
-
+	// 两笔交易总盈利 4，时间跨度 4 分钟，Period 2 分钟 → 2 个周期，平均每周期盈利 2
 	orders := []Order{
-		{
-			Side:          BUY,
-			Amount:        big.NewDecimal(1),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: now,
-		},
-		{
-			Side:          SELL,
-			Amount:        big.NewDecimal(2),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: now.Add(time.Minute),
-		},
-		{
-			Side:          BUY,
-			Amount:        big.NewDecimal(2),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: now.Add(time.Minute * 2),
-		},
-		{
-			Side:          SELL,
-			Amount:        big.NewDecimal(3),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: now.Add(time.Minute * 3),
-		},
+		{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: now},
+		{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(3), Security: example, ExecutionTime: now.Add(time.Minute)},
+		{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(3), Security: example, ExecutionTime: now.Add(time.Minute * 2)},
+		{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: now.Add(time.Minute * 4)},
 	}
-
 	for _, order := range orders {
 		record.Operate(order)
 	}
-
-	ppa := PeriodProfitAnalysis{
-		Period: time.Minute * 2,
-	}
-
+	ppa := PeriodProfitAnalysis{Period: time.Minute * 2}
 	assert.EqualValues(t, 2, ppa.Analyze(record))
 }
 
 func TestProfitableTradesAnalysis(t *testing.T) {
 	record := NewTradingRecord()
-
+	// 第一笔盈利（买1@1卖1@2），第二笔持平（卖2@1买2@1）
 	orders := []Order{
-		{
-			Side:          BUY,
-			Amount:        big.NewDecimal(1),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: time.Now(),
-		},
-		{
-			Side:          SELL,
-			Amount:        big.NewDecimal(2),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: time.Now(),
-		},
-		{
-			Side:          BUY,
-			Amount:        big.NewDecimal(2),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: time.Now(),
-		},
-		{
-			Side:          SELL,
-			Amount:        big.NewDecimal(1),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: time.Now(),
-		},
+		{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
+		{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(2), Security: example, ExecutionTime: time.Now()},
+		{Side: SELL, Amount: big.NewDecimal(2), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
+		{Side: BUY, Amount: big.NewDecimal(2), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
 	}
-
 	for _, order := range orders {
 		record.Operate(order)
 	}
-
 	pta := ProfitableTradesAnalysis{}
-
 	assert.EqualValues(t, 1, pta.Analyze(record))
 }
 
 func TestAverageProfitAnalysis(t *testing.T) {
 	record := NewTradingRecord()
-
+	// 两笔交易，每笔盈利 2，平均 2
 	orders := []Order{
-		{
-			Side:          BUY,
-			Amount:        big.NewDecimal(1),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: time.Now(),
-		},
-		{
-			Side:          SELL,
-			Amount:        big.NewDecimal(2),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: time.Now(),
-		},
-		{
-			Side:          BUY,
-			Amount:        big.NewDecimal(2),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: time.Now(),
-		},
-		{
-			Side:          SELL,
-			Amount:        big.NewDecimal(5),
-			Price:         big.NewDecimal(1),
-			Security:      example,
-			ExecutionTime: time.Now(),
-		},
+		{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
+		{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(3), Security: example, ExecutionTime: time.Now()},
+		{Side: SELL, Amount: big.NewDecimal(1), Price: big.NewDecimal(3), Security: example, ExecutionTime: time.Now()},
+		{Side: BUY, Amount: big.NewDecimal(1), Price: big.NewDecimal(1), Security: example, ExecutionTime: time.Now()},
 	}
-
 	for _, order := range orders {
 		record.Operate(order)
 	}
-
-	pta := AverageProfitAnalysis{}
-
-	assert.EqualValues(t, 2, pta.Analyze(record))
+	apa := AverageProfitAnalysis{}
+	assert.EqualValues(t, 2, apa.Analyze(record))
 }
 
 func TestBuyAndHoldAnalysis(t *testing.T) {
